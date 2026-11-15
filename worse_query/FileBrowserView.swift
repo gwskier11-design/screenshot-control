@@ -21,6 +21,7 @@ struct FileBrowserView: View {
     @State private var selectedFile: SelectedFile?
     @State private var status = "Tap Scan to find app containers."
     @State private var scanning = false
+    @State private var exporting = false
     @State private var openSnapchatAfterScan = false
     @State private var currentBundleID: String?
     @State private var search = ""
@@ -49,6 +50,10 @@ struct FileBrowserView: View {
                     Section {
                         Button("Back") { goBack(from: folder) }
                         Text(status).font(.caption)
+                        if currentBundleID == "com.toyopagroup.picaboo" {
+                            Button(exporting ? "Exporting..." : "Export Snapchat Files") { exportSnapchat() }
+                                .disabled(exporting)
+                        }
                         Text(folder.path.replacingOccurrences(of: rootFolder?.path ?? "", with: currentBundleID == "com.toyopagroup.picaboo" ? "Snapchat" : "App Data"))
                             .font(.caption)
                             .textSelection(.enabled)
@@ -232,6 +237,51 @@ struct FileBrowserView: View {
         } catch {
             files = []
             status = "Could not read folder: \(error.localizedDescription)"
+        }
+    }
+
+    private func exportSnapchat() {
+        guard currentBundleID == "com.toyopagroup.picaboo", let rootFolder else { return }
+        exporting = true
+        status = "Copying Snapchat files to On My iPhone..."
+        DispatchQueue.global(qos: .userInitiated).async {
+            let files = FileManager.default
+            let documents = files.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let stamp = Date().formatted(.iso8601).replacingOccurrences(of: ":", with: "-")
+            let destination = documents.appendingPathComponent("Snapchat Export " + stamp, isDirectory: true)
+            var copied = 0
+            var skipped = 0
+            do {
+                try files.createDirectory(at: destination, withIntermediateDirectories: true)
+                let enumerator = files.enumerator(at: rootFolder, includingPropertiesForKeys: [.isDirectoryKey], options: [], errorHandler: { _, _ in
+                    skipped += 1
+                    return true
+                })
+                while let source = enumerator?.nextObject() as? URL {
+                    let relative = String(source.path.dropFirst(rootFolder.path.count + 1))
+                    let target = destination.appendingPathComponent(relative)
+                    do {
+                        if (try source.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true {
+                            try files.createDirectory(at: target, withIntermediateDirectories: true)
+                        } else {
+                            try files.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                            try files.copyItem(at: source, to: target)
+                            copied += 1
+                        }
+                    } catch {
+                        skipped += 1
+                    }
+                }
+                DispatchQueue.main.async {
+                    status = "Exported \(copied) files, skipped \(skipped). Find \(destination.lastPathComponent) in Files > On My iPhone > Screenshot Control."
+                    exporting = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    status = "Export failed: \(error.localizedDescription)"
+                    exporting = false
+                }
+            }
         }
     }
 
