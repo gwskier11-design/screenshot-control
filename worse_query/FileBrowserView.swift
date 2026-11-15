@@ -22,15 +22,27 @@ struct FileBrowserView: View {
     @State private var status = "Tap Scan to find app containers."
     @State private var scanning = false
     @State private var search = ""
+    @State private var showingSearch = false
+    @FocusState private var searchFocused: Bool
     private let group = "group.com.georgewatts.screenshotcontrol"
 
     private var matchingContainers: [AppContainer] {
         search.isEmpty ? containers : containers.filter { $0.bundleID.localizedCaseInsensitiveContains(search) }
     }
 
+    private var matchingFiles: [URL] {
+        search.isEmpty ? files : files.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(search) }
+    }
+
     var body: some View {
         NavigationStack {
             List {
+                if showingSearch {
+                    TextField(currentFolder == nil ? "Search apps" : "Search files", text: $search)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($searchFocused)
+                }
                 if let folder = currentFolder {
                     Section {
                         Button("Back") { goBack(from: folder) }
@@ -40,10 +52,11 @@ struct FileBrowserView: View {
                             .textSelection(.enabled)
                     }
                     Section("Files") {
-                        ForEach(files, id: \.self) { file in
+                        ForEach(matchingFiles, id: \.self) { file in
                             Button {
                                 if isDirectory(file) {
                                     currentFolder = file
+                                    search = ""
                                     loadFiles()
                                 } else {
                                     selectedFile = SelectedFile(url: file)
@@ -68,7 +81,15 @@ struct FileBrowserView: View {
                 }
             }
             .navigationTitle("File Browser")
-            .searchable(text: $search, prompt: "Search bundle IDs")
+            .toolbar {
+                Button {
+                    showingSearch.toggle()
+                    if showingSearch { searchFocused = true } else { search = "" }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .accessibilityLabel(showingSearch ? "Close search" : "Search")
+            }
             .sheet(item: $selectedFile) { file in
                 FilePreview(url: file.url)
             }
@@ -143,10 +164,12 @@ struct FileBrowserView: View {
         let folder = URL(fileURLWithPath: container.path)
         rootFolder = folder
         currentFolder = folder
+        search = ""
         loadFiles()
     }
 
     private func goBack(from folder: URL) {
+        search = ""
         guard let rootFolder, folder != rootFolder else {
             currentFolder = nil
             rootFolder = nil
