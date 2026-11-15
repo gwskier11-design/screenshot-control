@@ -21,6 +21,8 @@ struct FileBrowserView: View {
     @State private var selectedFile: SelectedFile?
     @State private var status = "Tap Scan to find app containers."
     @State private var scanning = false
+    @State private var openSnapchatAfterScan = false
+    @State private var currentBundleID: String?
     @State private var search = ""
     @State private var showingSearch = false
     @FocusState private var searchFocused: Bool
@@ -47,9 +49,20 @@ struct FileBrowserView: View {
                     Section {
                         Button("Back") { goBack(from: folder) }
                         Text(status).font(.caption)
-                        Text(folder.path.replacingOccurrences(of: rootFolder?.path ?? "", with: "App Data"))
+                        Text(folder.path.replacingOccurrences(of: rootFolder?.path ?? "", with: currentBundleID == "com.toyopagroup.picaboo" ? "Snapchat" : "App Data"))
                             .font(.caption)
                             .textSelection(.enabled)
+                    }
+                    if let rootFolder {
+                        Section("Jump to") {
+                            Button("App data root") { jump(to: rootFolder) }
+                            ForEach(["Documents", "Library", "Library/Caches", "tmp"], id: \.self) { folderName in
+                                let destination = rootFolder.appendingPathComponent(folderName)
+                                if isDirectory(destination) {
+                                    Button(folderName) { jump(to: destination) }
+                                }
+                            }
+                        }
                     }
                     Section("Files") {
                         ForEach(matchingFiles, id: \.self) { file in
@@ -69,13 +82,15 @@ struct FileBrowserView: View {
                     }
                 } else {
                     Section {
+                        Button("Open Snapchat Files") { openSnapchat() }
+                            .disabled(scanning)
                         Button(scanning ? "Scanning..." : "Scan App Containers") { scan() }
                             .disabled(scanning)
                         Text(status).font(.caption).textSelection(.enabled)
                     }
                     Section("Applications") {
                         ForEach(matchingContainers) { container in
-                            Button(container.bundleID) { open(container) }
+                            Button(container.bundleID == "com.toyopagroup.picaboo" ? "Snapchat" : container.bundleID) { open(container) }
                         }
                     }
                 }
@@ -100,8 +115,18 @@ struct FileBrowserView: View {
                 }
                 currentFolder = nil
                 rootFolder = nil
+                currentBundleID = nil
                 files = []
             }
+        }
+    }
+
+    private func openSnapchat() {
+        if let snapchat = containers.first(where: { $0.bundleID == "com.toyopagroup.picaboo" }) {
+            open(snapchat)
+        } else {
+            openSnapchatAfterScan = true
+            scan()
         }
     }
 
@@ -151,6 +176,14 @@ struct FileBrowserView: View {
             containers = result
             status = message
             scanning = false
+            if openSnapchatAfterScan {
+                openSnapchatAfterScan = false
+                if let snapchat = result.first(where: { $0.bundleID == "com.toyopagroup.picaboo" }) {
+                    open(snapchat)
+                } else {
+                    status = "Snapchat container was not found"
+                }
+            }
         }
     }
 
@@ -164,6 +197,7 @@ struct FileBrowserView: View {
         let folder = URL(fileURLWithPath: container.path)
         rootFolder = folder
         currentFolder = folder
+        currentBundleID = container.bundleID
         search = ""
         loadFiles()
     }
@@ -173,12 +207,19 @@ struct FileBrowserView: View {
         guard let rootFolder, folder != rootFolder else {
             currentFolder = nil
             rootFolder = nil
+            currentBundleID = nil
             files = []
             if extensionHandle >= 0 { worse_query_release(extensionHandle) }
             extensionHandle = -1
             return
         }
         currentFolder = folder.deletingLastPathComponent()
+        loadFiles()
+    }
+
+    private func jump(to folder: URL) {
+        currentFolder = folder
+        search = ""
         loadFiles()
     }
 
