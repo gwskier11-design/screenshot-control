@@ -10,6 +10,7 @@ struct ContentView: View {
     private let targetBundle = "com.georgewatts.screenshottest"
 
     var body: some View {
+        TabView {
         NavigationStack {
             Form {
                 Section("Control") {
@@ -37,6 +38,10 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Screenshot Control")
+        }
+        .tabItem { Label("Control", systemImage: "camera") }
+        FileBrowserView()
+            .tabItem { Label("Files", systemImage: "folder") }
         }
     }
 
